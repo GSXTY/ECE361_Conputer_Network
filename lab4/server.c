@@ -11,6 +11,7 @@
 #include <sys/select.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <errno.h>
 #include "packet.h"
 
 // record all user info
@@ -314,9 +315,15 @@ void* event_handler(void *arg) {
     byte_num = recv(new_user->sockfd, buffer, MAX_BUFFER - 1, 0);
     if (byte_num < 0) {
       printf("receive str fail\n");
+      if (errno  == ECONNRESET) {
+        logout_handler(&new_user);
+      }
+      break;
     }
     if (byte_num == 0) {
-      continue;
+      printf("close conn/n");
+      logout_handler(&new_user);
+      break;
     }
     buffer[byte_num] = '\0';
 
@@ -406,7 +413,6 @@ int main (int argc, char const *argv[]) {
   }
 
   close(sockfd);
- 
 
   return 0;
 }

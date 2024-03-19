@@ -4,8 +4,8 @@
       {
           "type": "lldb",
           "request": "launch",
-          "name": "deliver",
-          "program": "${workspaceFolder}/deliver",
+          "name": "client",
+          "program": "${workspaceFolder}/client",
           "args": [],
           "cwd": "${workspaceFolder}"
       },
@@ -20,8 +20,8 @@
   ],
   "compounds": [
       {
-          "name": "Debug Both deliver and server",
-          "configurations": ["deliver", "server"]
+          "name": "Debug Both client and server",
+          "configurations": ["client", "server"]
       }
   ]
 }
