@@ -21,13 +21,14 @@ int user_num = 0;
 
 int max_session_num = 1;
 int current_session_num = 0;
-
+int current_session_user_count = 0;
 
 char* server_session = "";
 
 pthread_mutex_t user_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t sessionCnt_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t userConnectedCnt_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t sessionUserCnt_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void login_handler(packet** info, user** new_user) {
   packet back_p = {0};
@@ -83,6 +84,15 @@ void logout_handler(user** new_user) {
       if (send((*new_user)->sockfd, str, MAX_BUFFER - 1, 0) == -1) {
         printf("send already logout ack fail\n");
       }
+      if (strcmp(users[i]->session_id, "none") != 0) { //update session user count
+        pthread_mutex_lock(&sessionUserCnt_mutex);
+        current_session_user_count -= 1;
+        if (current_session_user_count == 0) {
+          current_session_num = 0;
+          server_session = "";
+        }
+        pthread_mutex_unlock(&sessionUserCnt_mutex);
+      }
       return;
     }
   }
@@ -132,6 +142,10 @@ void join_handler(packet** pack, user** new_user) {
   (*new_user)->session_id = session_id;
   pthread_mutex_unlock(&user_mutex);
 
+  //update session user count
+  pthread_mutex_lock(&sessionUserCnt_mutex);
+  current_session_user_count += 1;
+  pthread_mutex_unlock(&sessionUserCnt_mutex);
 
   packet back_p = {0};
   back_p.type = JN_ACK;
@@ -154,6 +168,15 @@ void leave_handler(user** new_user) {
   (*new_user)->session_id = "none";
   pthread_mutex_unlock(&user_mutex);
 
+  //update session user count
+  pthread_mutex_lock(&sessionUserCnt_mutex);
+  current_session_user_count -= 1;
+  if (current_session_user_count == 0) {
+    current_session_num = 0;
+    server_session = "";
+  }
+  pthread_mutex_unlock(&sessionUserCnt_mutex);
+
   packet back_p = {0};
   back_p.type = LEAVE_SESS;
 
@@ -161,6 +184,21 @@ void leave_handler(user** new_user) {
   if (send((*new_user)->sockfd, back_str, MAX_BUFFER - 1, 0) == -1) {
     printf("send leave session ack fail\n");
   }
+  /*
+  else {
+    //find session user count
+    int user_count = 0;
+    for (int i = 0; i < user_num; ++ i) {
+      //char* name = (char*)users[i]->name;
+      char* sid = users[i]->session_id;
+      if (strcmp((*new_user)->session_id, sid) == 0) {
+        user_count += 1;
+      }
+    }
+    if (user_count == 0) { //delete session
+
+    }
+  }*/
 }
 
 void create_handler(packet** pack, user** new_user) {
@@ -178,6 +216,11 @@ void create_handler(packet** pack, user** new_user) {
   (*new_user)->session_status = 1;
   (*new_user)->session_id = server_session;
   pthread_mutex_unlock(&user_mutex);
+
+  //update session user count
+  pthread_mutex_lock(&sessionUserCnt_mutex);
+  current_session_user_count += 1;
+  pthread_mutex_unlock(&sessionUserCnt_mutex);
 
   pthread_mutex_lock(&sessionCnt_mutex);
   ++ current_session_num;
