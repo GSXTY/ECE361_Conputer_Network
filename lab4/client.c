@@ -41,6 +41,9 @@ void* server_response(void* sfd) {
     packet* rec_packet = stop(buffer);
     if (rec_packet->type == LO_ACK) {
       printf("login ok \n");
+    } else if (rec_packet->type == LO_NAK) {
+      printf("login fail \n");
+      printf("%s\n", rec_packet->data);
     } else if (rec_packet->type == JN_ACK) {
       printf("join session ok \n");
     } else if (rec_packet->type == JN_NAK) {

@@ -1,13 +1,13 @@
 CC=gcc
 CFLAGS=-I. -g -O0 -lpthread
 
-all: server deliver
+all: server client
 
 server.o: server.c packet.h
 	$(CC) -c server.c $(CFLAGS)
 
-deliver.o: deliver.c packet.h
-	$(CC) -c deliver.c $(CFLAGS)
+client.o: client.c packet.h
+	$(CC) -c client.c $(CFLAGS)
 
 packet.o: packet.c packet.h
 	$(CC) -c packet.c $(CFLAGS)
@@ -15,8 +15,8 @@ packet.o: packet.c packet.h
 server: server.o packet.o
 	$(CC) -o server server.o packet.o  $(CFLAGS)
 
-deliver: deliver.o packet.o
-	$(CC) -o deliver deliver.o packet.o $(CFLAGS)
+client: client.o packet.o
+	$(CC) -o client client.o packet.o $(CFLAGS)
 
 clean:
-	rm -f *.o server deliver
+	rm -f *.o server client

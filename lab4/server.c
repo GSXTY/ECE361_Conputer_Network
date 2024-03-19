@@ -34,8 +34,17 @@ void login_handler(packet** info, user** new_user) {
   back_p.type = LO_ACK;
 
   for (int i = 0; i < user_num; ++ i) {
-    if ((*info)->source == users[i]->name && users[i]->log_status == 1) {
-      printf("already exist user, log in fail\n");
+    if (strcmp((char*)((*info)->source), (char*)(users[i]->name)) == 0 && users[i]->log_status == 1) {
+      back_p.type = LO_NAK;
+      memcpy(back_p.source, "server", strlen("server"));
+      char* s = "already exist user, log in fail";
+      back_p.size = strlen(s);
+      memcpy(back_p.data, s, strlen(s));
+      char* back_str = ptos(&back_p);
+
+      if (send((*new_user)->sockfd, back_str, MAX_BUFFER - 1, 0) == -1) {
+        printf("send login NAK fail\n");
+      }
       return;
     }
   }
@@ -159,6 +168,7 @@ void create_handler(packet** pack, user** new_user) {
     printf("have max session already\n");
     return;
   }
+  
 
   packet* rec_packet = *pack;
   char* session_id = (char*)(rec_packet->data);
