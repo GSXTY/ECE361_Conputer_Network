@@ -16,88 +16,125 @@
 
 // record all user info
 user** users;
-int max_user = 5;
-int user_num = 0;
+int user_count = 0; //includes logged out users
+const int max_user_count = 50;
 
+int session_count = 0;
+const int max_session_count = 10;
 
-int max_session_num = 1;
-int current_session_num = 0;
-int current_session_user_count = 0;
-
-char* server_session = "";
+int session_user_counts[10] = {0};
+char* session_names[10] = {0};
 
 pthread_mutex_t user_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t sessionCnt_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t userConnectedCnt_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t sessionUserCnt_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t userCount_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t sessionCount_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t sessionUserCounts_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t sessionNames_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-void login_handler(packet** info, user** new_user) {
-  packet back_p = {0};
-  back_p.type = LO_ACK;
 
-  for (int i = 0; i < user_num; ++ i) {
-    if (strcmp((char*)((*info)->source), (char*)(users[i]->name)) == 0 && users[i]->log_status == 1) {
-      back_p.type = LO_NAK;
-      memcpy(back_p.source, "server", strlen("server"));
-      char* s = "already exist user, log in fail";
-      back_p.size = strlen(s);
-      memcpy(back_p.data, s, strlen(s));
-      char* back_str = ptos(&back_p);
-
-      if (send((*new_user)->sockfd, back_str, MAX_BUFFER - 1, 0) == -1) {
-        printf("send login NAK fail\n");
-      }
-      return;
+int get_session_index(char* session_name) {
+  for (int i=0; i < max_session_count; ++i) {
+    if (strcmp(session_name, session_names[i]) == 0) {
+      return i;
     }
   }
+  return -1;
+}
 
+int get_free_session_index() {
+  for (int i=0; i< max_session_count; ++i) {
+    if (session_user_counts[i] == 0) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+int get_user_index(char* user_name) {
+  for (int i=0; i < user_count; ++i) {
+    if (strcmp(user_name, (char*)(users[i]->name)) == 0) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+void send_nak(user** u, char* name, char* msg) {
+  packet p = {0};
+  p.type = LO_NAK;
+  memcpy(p.source, "server", strlen("server"));
+  p.size = strlen(msg);
+  memcpy(p.data, msg, strlen(msg));
+  char* p_str = ptos(&p);
+
+  if (send((*u)->sockfd, p_str, MAX_BUFFER-1, 0) == -1) {
+    printf("send %s NAK fail\n", name);
+  }
+}
+
+void send_ack(user** u, char* name) {
+  packet p = {0};
+  p.type = LO_ACK;
+  char* p_str = ptos(&p);
+
+  if (send((*u)->sockfd, p_str, MAX_BUFFER-1, 0) == -1) {
+    printf("send %s ACK fail\n", name);
+  }
+}
+
+void login_handler(packet** info, user** new_user) {
+
+  if (user_count >= max_user_count) { //user limit reached
+    send_nak(new_user, "login", "user limit reached, login failed");
+    return;
+  }
+
+  int user_index = get_user_index((char*)(*info)->source);
+  if (user_index >= 0 && users[user_index]->log_status == 1) { //user already logged in
+    send_nak(new_user, "login", "user already logged in, login failed");
+    return;
+  }
+
+  //login stuff
   pthread_mutex_lock(&user_mutex);
   strncpy((char*)(*new_user)->name, (char*)(*info)->source, MAX_NAME);
   strncpy((char*)(*new_user)->password, (char*)(*info)->data, MAX_DATA);
   (*new_user)->log_status = 1;
   (*new_user)->session_status = 0;
   (*new_user)->session_id = "none";
-  users[user_num] = *new_user;
+  users[user_count] = *new_user;
   pthread_mutex_unlock(&user_mutex);
 
-  pthread_mutex_lock(&userConnectedCnt_mutex);
-  ++ user_num;
-  pthread_mutex_unlock(&userConnectedCnt_mutex);
+  pthread_mutex_lock(&userCount_mutex);
+  ++user_count;
+  pthread_mutex_unlock(&userCount_mutex);
 
-  char* back_str = ptos(&back_p);
-  if (send((*new_user)->sockfd, back_str, MAX_BUFFER - 1, 0) == -1) {
-    printf("send login ack fail\n");
-  }
+  send_ack(new_user, "login");
 }
 
 void logout_handler(user** new_user) {
   packet back_p = {0};
   back_p.type = EXIT;
 
-  for (int i = 0; i < user_num; ++ i) {
-    if ((*new_user)->name == users[i]->name && users[i]->log_status == 0) {
-      char* s = "already logout";
-      memcpy(back_p.data, s, strlen(s));
-      memcpy(back_p.source, "server", strlen("server"));
-      back_p.size = strlen(s);
+  int user_index = get_user_index((*new_user)->name));
+  if (users[user_index]->log_status == 0) { //user already logged out
+    char* s = "already logout";
+    memcpy(back_p.data, s, strlen(s));
+    memcpy(back_p.source, "server", strlen("server"));
+    back_p.size = strlen(s);
 
-      char* str = ptos(&back_p);
-      if (send((*new_user)->sockfd, str, MAX_BUFFER - 1, 0) == -1) {
-        printf("send already logout ack fail\n");
-      }
-      if (strcmp(users[i]->session_id, "none") != 0) { //update session user count
-        pthread_mutex_lock(&sessionUserCnt_mutex);
-        current_session_user_count -= 1;
-        if (current_session_user_count == 0) {
-          current_session_num = 0;
-          server_session = "";
-        }
-        pthread_mutex_unlock(&sessionUserCnt_mutex);
-      }
-      return;
+    char* str = ptos(&back_p);
+    if (send((*new_user)->sockfd, str, MAX_BUFFER - 1, 0) == -1) {
+      printf("sending \"already logout ack\" failed\n");
     }
+    return;
   }
 
+  //logout stuff
+  int session_index = get_session_index((*new_user)->session_id);
+  if (session_index != -1) { //exit session
+
+  }
   pthread_mutex_lock(&user_mutex);
   (*new_user)->log_status = 0;
   (*new_user)->session_status = 0;
