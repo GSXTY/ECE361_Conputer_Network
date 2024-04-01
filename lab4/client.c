@@ -51,7 +51,7 @@ void* server_response(void* sfd) {
     } else if (rec_packet->type == NS_ACK) {
       printf("create session and join ok \n");
     } else if (rec_packet->type == QU_ACK) {
-      printf("list:%s\n", rec_packet->data);
+      printf("list:\n%s", rec_packet->data);
     } else if (rec_packet->type == EXIT) {
       printf("%s\n", rec_packet->data);
     } else if (rec_packet->type == MESSAGE){

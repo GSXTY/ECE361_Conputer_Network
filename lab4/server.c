@@ -51,6 +51,10 @@ int get_free_session_index() {
   return -1;
 }
 
+bool is_valid_session_name(char* session_name) {
+  return strcmp(session_name, "none") != 0;
+}
+
 int get_user_index(char* user_name) {
   for (int i=0; i < user_count; ++i) {
     if (strcmp(user_name, (char*)(users[i]->name)) == 0) {
@@ -115,14 +119,15 @@ void logout_handler(user** new_user) {
 
   //logout stuff
   int session_index = get_session_index((*new_user)->session_id);
-  if (session_index != -1) { //exit session
+  
+  if (is_valid_session_name((*new_user)->session_id) && session_index != -1) { //exit session
     pthread_mutex_lock(&sessionUserCounts_mutex);
     --session_user_counts[session_index];
     pthread_mutex_unlock(&sessionUserCounts_mutex);
     
     if (session_user_counts[session_index] == 0) {
       pthread_mutex_lock(&sessionNames_mutex);
-      session_names[session_index] = "";
+      session_names[session_index] = "none";
       pthread_mutex_unlock(&sessionNames_mutex);
 
       pthread_mutex_lock(&sessionCount_mutex);
@@ -146,12 +151,12 @@ void join_handler(packet** pack, user** new_user) {
 
   if (session_index == -1) {
     printf("session does not exist\n");
-    send_packet(new_user, JN_NAK, "join ack", "");
+    send_packet(new_user, JN_NAK, "join nak", "");
     return;
   }
   if (strcmp((*new_user)->session_id, session_id) == 0) {
     printf("user already joined session\n");
-    send_packet(new_user, JN_NAK, "join ack", "");
+    send_packet(new_user, JN_NAK, "join nak", "");
     return;
   }
 
@@ -182,7 +187,7 @@ void leave_handler(user** user) {
   pthread_mutex_unlock(&sessionUserCounts_mutex);
   if (session_user_counts[session_index] == 0) {
       pthread_mutex_lock(&sessionNames_mutex);
-      session_names[session_index] = "";
+      session_names[session_index] = "none";
       pthread_mutex_unlock(&sessionNames_mutex);
 
       pthread_mutex_lock(&sessionCount_mutex);
@@ -203,15 +208,23 @@ void create_handler(packet** pack, user** new_user) {
   packet* rec_packet = *pack;
   char* session_id = (char*)(rec_packet->data);
 
+  if (!is_valid_session_name(session_id)) {
+    //printf("invalid session name, failed to create session\n");
+    send_packet(new_user, JN_NAK, "create nak", "invalid session name, failed to create session");
+    return;
+  }
+
   int session_index = get_session_index(session_id);
   if (session_index != -1) {
-    printf("session already exists, failed to create session");
+    //printf("session already exists, failed to create session\n");
+    send_packet(new_user, JN_NAK, "create nak", "session already exists, failed to create session");
     return;
   }
 
   session_index = get_free_session_index();
   if (session_index == -1) {
-    printf("session limit reached, failed to create session\n");
+    //printf("session limit reached, failed to create session\n");
+    send_packet(new_user, JN_NAK, "create nak", "session limit reached, failed to create session");
     return;
   }
   
@@ -240,7 +253,7 @@ void message_handler(packet** pack, user** new_user) {
 
   char* session_id = (*new_user)->session_id;
   int session_index = get_session_index(session_id);
-  if (strcmp(session_id, "none") == 0 || session_index == -1) {
+  if (!is_valid_session_name(session_id) || session_index == -1) {
     printf("not in any session, send message fail\n");
     return;
   }
@@ -248,6 +261,7 @@ void message_handler(packet** pack, user** new_user) {
   packet* rec_packet = *pack;
   char* message = (char*)(rec_packet->data);
   char* src_name = (char*)(*new_user)->name;
+  printf("%s\n", message);
 
   for (int i = 0; i < user_count; ++i) {
     char* dest_name = (char*)users[i]->name;
@@ -287,21 +301,22 @@ void list_handler(user** new_user) {
 }
 
 void* event_handler(void *arg) {
+
   user* new_user = (user*) arg;
   char buffer[MAX_BUFFER] = {0};
   int byte_num;
-
+  
   while (1) {
     byte_num = recv(new_user->sockfd, buffer, MAX_BUFFER - 1, 0);
+    printf("received %d bytes\n", byte_num);
+
     if (byte_num < 0) {
-      printf("receive str fail\n");
       if (errno  == ECONNRESET) {
         logout_handler(&new_user);
       }
       break;
     }
     if (byte_num == 0) {
-      printf("close conn/n");
       logout_handler(&new_user);
       break;
     }
@@ -374,6 +389,11 @@ int main (int argc, char const *argv[]) {
   //init users
   users = malloc(max_user_count * sizeof(user*));
 
+  //init session names (no mutex needed yet)
+  for (int i=0; i < max_session_count; ++i) {
+    session_names[i] = "none";
+  }
+
   while (1) {
     struct sockaddr_in client_addr;
     socklen_t client_addr_size = sizeof(client_addr);
@@ -389,7 +409,7 @@ int main (int argc, char const *argv[]) {
     new_user->sockfd = new_socket;
 
     pthread_create(&(new_user -> p), NULL, event_handler, (void *)new_user);
-
+    
   }
 
   close(sockfd);
