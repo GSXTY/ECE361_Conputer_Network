@@ -275,7 +275,7 @@ int main (int argc, char const *argv[]) {
     fgets(input, MAX_BUFFER, stdin);
     input[strcspn(input, "\n")] = 0; 
 
-    const char* command = strtok(input, " ");  
+    const char* command = strtok(strdup(input), " ");  
 
     // /login mo 123 128.100.13.251 55000
     if (strcmp(command, LOG_IN) == 0) {
@@ -345,6 +345,7 @@ int main (int argc, char const *argv[]) {
       }
       break;
     } else {
+      //printf("input: %s\n", input);
       bool rec = send_text(&sockfd, input, (char*)client_id, &client_p);
       if (!rec) {
         printf("send text function fail\n");

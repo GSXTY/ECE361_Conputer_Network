@@ -261,7 +261,7 @@ void message_handler(packet** pack, user** new_user) {
   packet* rec_packet = *pack;
   char* message = (char*)(rec_packet->data);
   char* src_name = (char*)(*new_user)->name;
-  printf("%s\n", message);
+  //printf("%s\n", message);
 
   for (int i = 0; i < user_count; ++i) {
     char* dest_name = (char*)users[i]->name;
