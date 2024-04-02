@@ -1,0 +1,3 @@
+Multisession
+	Using global variables "users", "user_count", "session_count", "session_user_counts", "session_names", we track session and user info. Then in server.c, we added code to update them accordingly in each of the event handlers.
+	Note that user_count includes users who have logged out, and logging in with a username that has previously logged in before will not increase the user count. This is different from session_count, which increments/decrements each time a session is created/destroyed.
